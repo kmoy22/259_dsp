@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 static size_t total_pipeline_latency(const dsp48e1_config_t *cfg) {
     return (size_t)cfg->multiplier_latency +
@@ -487,3 +488,7 @@ int dsp48e1_model_self_test_fp32(void) {
     return status;
 }
 
+int main(void) {
+    printf("%f\n", round_to_nearest_even(2.9));
+    return 1;
+}
