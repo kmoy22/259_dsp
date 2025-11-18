@@ -1,1 +1,1 @@
-gcc dsp48e1_model.c dsp48e1_model.h -o dsp48e1_model.exe
+gcc dsp48e1.c -o dsp48e1.exe

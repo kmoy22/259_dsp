@@ -1,1 +1,1 @@
-./dsp48e1_model.exe
+./dsp48e1.exe
