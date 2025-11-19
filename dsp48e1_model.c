@@ -17,7 +17,7 @@ static size_t total_pipeline_latency(const dsp48e1_config_t *cfg) {
 }
 
 static float round_to_nearest_even(float value) {
-    return nearbyintf(value);
+    return nearbyintf(value/2.0f)*2.0f  ;
 }
 
 static float saturate_fp32(float value) {

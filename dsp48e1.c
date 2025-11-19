@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 
-long dsp48e1(int a, int b, long c, int d){
+int64_t dsp48e1(int a, int b, long c, int d){
     // Module bit widths
     const int A_WIDTH = 30;
     const int A_WIDTH_PREADDER = 25;
@@ -18,7 +18,7 @@ long dsp48e1(int a, int b, long c, int d){
     int a_mask  = 0x3FFFFFFF; // Lower 30 bits`
     int a_mask_preadder  = 0x01FFFFFF; // Lower 25 bits
     int b_mask  = 0x003FFFFF; // Lower 18 bits
-    long c_mask = 0x0000FFFFFFFFFFFF; // Lower 48 bits
+    long long c_mask = 0x0000FFFFFFFFFFFF; // Lower 48 bits
     int d_mask  = 0x01FFFFFF; // Lower 25 bits
 
     unsigned int a_val  = a & a_mask;
@@ -53,20 +53,20 @@ long dsp48e1(int a, int b, long c, int d){
     // Accumulator
     long accumulator_result = multiplier_result + c_val;
 
-    long p = 0;
+    int64_t p = 0;
 
     p = accumulator_result & c_mask;
     
     return p;
 }
-
+/*
 int main() {
-    int a = 0; // 30 bits
-    int b = 0;    // 18 bits
-    long c = 0; // 48 bits
-    int d = 0; // 25 bits
+    int a = 0x000ABCDE; // 30 bits
+    int b =   0x00012345;    // 18 bits
+    long c = 0x00001111; // 48 bits
+    int d = 0x00000010; // 25 bits
 
     long result = dsp48e1(a, b, c, d);
     printf("Result: 0x%lX\n", result);
     return 0;
-}
+}*/
