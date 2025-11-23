@@ -76,93 +76,6 @@ typedef struct dsp48e1_input_t
     bool multsignin; // 1-bit
 } dsp48e1_input_t;
 
-int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32_t d, int8_t opmode, int8_t alumode, int8_t inmode, int8_t carryinsel, bool carryin, bool carrycascin) {
-    // Core functionality of the DSP48E1 module
-    // Inputs:
-    // A[29:0] - Input to the multiplier or pre-adder
-    // A1 vs A2 are the pipeline stages for the A input, with A2 being the registered version of A1
-    // B[17:0] - Input to the multiplier
-    // B1 vs B2 are the pipeline stages for the B input, with B2 being the registered version of B1
-    // C[47:0] - Input to the second stage adder/subtractor, pattern detector, or logic function
-    // D[24:0] - Input to the pre-adder or alternative input to the multiplier
-    // INMODE[4:0] - Selects the funtionality of the pre-adder, A, B, D inputs, and input registers
-    // OPMODE[6:0] - Controls the input to the X, Y, and Z MUXes
-    // ALUMODE[3:0] - Controls the selection of the logic function 
-    // Outputs:
-    // P[47:0] - Primary output of the DSP48E1 slice
-
-    // Input bit widths
-    const int A_WIDTH = 30;
-    const int A_WIDTH_PREADDER = 25;
-    const int B_WIDTH = 18;
-    const int C_WIDTH = 48;
-    const int D_WIDTH = 25;
-
-    // Mask inputs to correct bit widths
-    int32_t a_mask          = 0x3FFFFFFF; // Lower 30 bits
-    int32_t a_mask_preadder = 0x01FFFFFF; // Lower 25 bits
-    int32_t b_mask          = 0x003FFFFF; // Lower 18 bits
-    int64_t c_mask          = 0x0000FFFFFFFFFFFF; // Lower 48 bits
-    int32_t d_mask          = 0x01FFFFFF; // Lower 25 bits
-
-    int32_t a1_val          = a1 & a_mask;
-    int32_t a1_val_preadder = a1 & a_mask_preadder;
-    int32_t a2_val          = a2 & a_mask;
-    int32_t a2_val_preadder = a2 & a_mask_preadder;
-    int32_t b1_val          = b1 & b_mask;
-    int32_t b2_val          = b2 & b_mask;
-    int64_t c_val           = c & c_mask;
-    int32_t d_val           = d & d_mask;
-
-    // Sign extend to fit the C types
-    // If the sign bit is set, extend the sign via the inverted mask
-    if (a1_val & (1 << (A_WIDTH - 1))) {
-        a1_val |= ~a_mask;
-    }
-    if (a1_val_preadder & (1 << (A_WIDTH_PREADDER - 1))) {
-        a1_val_preadder |= ~a_mask_preadder;
-    }
-    if (a2_val & (1 << (A_WIDTH - 1))) {
-        a2_val |= ~a_mask;
-    }
-    if (a2_val_preadder & (1 << (A_WIDTH_PREADDER - 1))) {
-        a2_val_preadder |= ~a_mask_preadder;
-    }
-    if (b1_val & (1 << (B_WIDTH - 1))) {
-        b1_val |= ~b_mask;
-    }
-    if (b2_val & (1 << (B_WIDTH - 1))) {
-        b2_val |= ~b_mask;
-    }
-    if (c_val & (0x1ULL << (C_WIDTH - 1))) {
-        c_val |= ~c_mask;
-    }
-    if (d_val & (1 << (D_WIDTH - 1))) {
-        d_val |= ~d_mask;
-    }
-
-    int32_t a_val_preadder = a_select(a1_val_preadder, a2_val_preadder, inmode);
-    int32_t a_val = a_select(a1_val, a2_val, inmode);
-    int32_t b_val = b_select(b1_val, b2_val, inmode);
-
-    // Pre adder  
-    int32_t preadder_result = pre_adder(a1_val_preadder, a2_val_preadder, d_val, inmode);
-
-    // 25 x 18 Multiplier
-    int64_t multiplier_result = multiplier(preadder_result, b_val);
-
-    int64_t mux_x_output = x_mux(multiplier_result, 0, a_val, b_val, opmode);
-    int64_t mux_y_output = y_mux(multiplier_result, c_val, opmode);
-    int64_t mux_z_output = z_mux(0, 0, c_val, opmode);
-
-    int64_t cin = carry_select(carryinsel, carryin, carrycascin, 0, a_val_preadder, b_val, 0, 0);
-
-    // Second stage: Adder/Subtractor/Logic
-    int64_t p = stage2(mux_x_output, mux_y_output, mux_z_output, cin, alumode, opmode);
-    
-    return p;
-}
-
 int32_t a_select(int32_t a1, int32_t a2, int8_t inmode) {
     // A input selection based on INMODE
     // INMODE[0] - Selects between A1 and A2 inputs
@@ -229,11 +142,20 @@ int32_t pre_adder(int32_t a1, int32_t a2, int32_t d, int8_t inmode) {
     return preadder_output;
 }
 
-int64_t multiplier(int32_t a, int32_t b) {
+int64_t multiplier_x(int32_t a, int32_t b) {
     // Multiplier functionality
     // Assume that the inputs are already masked and sign-extended appropriately
 
-    int64_t m = (int64_t)a * (int64_t)b;
+    int64_t m = (int64_t)a * (int64_t) (b & 0x1FF);
+
+    return m;
+}
+
+int64_t multiplier_y(int32_t a, int32_t b) {
+    // Multiplier functionality
+    // Assume that the inputs are already masked and sign-extended appropriately
+
+    int64_t m = (int64_t)a * (int64_t) (b & 0x3FE00);
 
     return m;
 }
@@ -358,6 +280,8 @@ int64_t stage2(int64_t x, int64_t y, int64_t z, int64_t cin, int8_t alumode, int
     int8_t opmode_y_control = (opmode & opmode_y_mask) >> 2;
     int8_t alumode4_control = alumode & alumode4_mask;
     int8_t alumode2_control = alumode & alumode2_mask;
+
+    printf("Stage 2 - x: 0x%lX, y: 0x%lX, z: 0x%lX, cin: 0x%lX, alumode: 0b%04b, opmode_y: 0b%02b\n", x, y, z, cin, alumode4_control, opmode_y_control);
 
     int64_t result;
 
@@ -488,14 +412,145 @@ int64_t carry_select(int8_t carryinsel, bool carryin, bool carrycascin, bool car
 
     return carryin_output;
 }
-/*
-int main() {
-    int a = 0x000ABCDE; // 30 bits
-    int b =   0x00012345;    // 18 bits
-    long c = 0x00001111; // 48 bits
-    int d = 0x00000010; // 25 bits
 
-    long result = dsp48e1(a, b, c, d);
-    printf("Result: 0x%lX\n", result);
+int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32_t d, int8_t opmode, int8_t alumode, int8_t inmode, int8_t carryinsel, bool carryin, bool carrycascin) {
+    // Core functionality of the DSP48E1 module
+    // Inputs:
+    // A[29:0] - Input to the multiplier or pre-adder
+    // A1 vs A2 are the pipeline stages for the A input, with A2 being the registered version of A1
+    // B[17:0] - Input to the multiplier
+    // B1 vs B2 are the pipeline stages for the B input, with B2 being the registered version of B1
+    // C[47:0] - Input to the second stage adder/subtractor, pattern detector, or logic function
+    // D[24:0] - Input to the pre-adder or alternative input to the multiplier
+    // INMODE[4:0] - Selects the funtionality of the pre-adder, A, B, D inputs, and input registers
+    // OPMODE[6:0] - Controls the input to the X, Y, and Z MUXes
+    // ALUMODE[3:0] - Controls the selection of the logic function 
+    // Outputs:
+    // P[47:0] - Primary output of the DSP48E1 slice
+
+    // Input bit widths
+    const int A_WIDTH = 30;
+    const int A_WIDTH_PREADDER = 25;
+    const int B_WIDTH = 18;
+    const int C_WIDTH = 48;
+    const int D_WIDTH = 25;
+
+    // Mask inputs to correct bit widths
+    int32_t a_mask          = 0x3FFFFFFF; // Lower 30 bits
+    int32_t a_mask_preadder = 0x01FFFFFF; // Lower 25 bits
+    int32_t b_mask          = 0x003FFFFF; // Lower 18 bits
+    int64_t c_mask          = 0x0000FFFFFFFFFFFF; // Lower 48 bits
+    int32_t d_mask          = 0x01FFFFFF; // Lower 25 bits
+
+    int32_t a1_val          = a1 & a_mask;
+    int32_t a1_val_preadder = a1 & a_mask_preadder;
+    int32_t a2_val          = a2 & a_mask;
+    int32_t a2_val_preadder = a2 & a_mask_preadder;
+    int32_t b1_val          = b1 & b_mask;
+    int32_t b2_val          = b2 & b_mask;
+    int64_t c_val           = c & c_mask;
+    int32_t d_val           = d & d_mask;
+
+    // Sign extend to fit the C types
+    // If the sign bit is set, extend the sign via the inverted mask
+    if (a1_val & (1 << (A_WIDTH - 1))) {
+        a1_val |= ~a_mask;
+    }
+    if (a1_val_preadder & (1 << (A_WIDTH_PREADDER - 1))) {
+        a1_val_preadder |= ~a_mask_preadder;
+    }
+    if (a2_val & (1 << (A_WIDTH - 1))) {
+        a2_val |= ~a_mask;
+    }
+    if (a2_val_preadder & (1 << (A_WIDTH_PREADDER - 1))) {
+        a2_val_preadder |= ~a_mask_preadder;
+    }
+    if (b1_val & (1 << (B_WIDTH - 1))) {
+        b1_val |= ~b_mask;
+    }
+    if (b2_val & (1 << (B_WIDTH - 1))) {
+        b2_val |= ~b_mask;
+    }
+    if (c_val & (0x1ULL << (C_WIDTH - 1))) {
+        c_val |= ~c_mask;
+    }
+    if (d_val & (1 << (D_WIDTH - 1))) {
+        d_val |= ~d_mask;
+    }
+
+    printf("A1: 0x%X, A2: 0x%X, B1: 0x%X, B2: 0x%X, C: 0x%lX, D: 0x%X\n", a1_val, a2_val, b1_val, b2_val, c_val, d_val);
+
+    int32_t a_val_preadder = a_select(a1_val_preadder, a2_val_preadder, inmode);
+    int32_t a_val = a_select(a1_val, a2_val, inmode);
+    int32_t b_val = b_select(b1_val, b2_val, inmode);
+
+    printf("A selected: 0x%X, B selected: 0x%X\n", a_val, b_val);
+
+    // Pre adder  
+    int32_t preadder_result = pre_adder(a1_val_preadder, a2_val_preadder, d_val, inmode);
+
+    printf("Pre-adder result: 0x%X\n", preadder_result);
+
+    // 25 x 18 Multiplier
+    int64_t multiplier_result_1 = multiplier_x(preadder_result, b_val);
+    int64_t multiplier_result_2 = multiplier_y(preadder_result, b_val);
+
+    printf("Multiplier result 1: 0x%lX, Multiplier result 2: 0x%lX\n", multiplier_result_1, multiplier_result_2);
+
+    int64_t mux_x_output = x_mux(multiplier_result_1, 0, a_val, b_val, opmode);
+    int64_t mux_y_output = y_mux(multiplier_result_2, c_val, opmode);
+    int64_t mux_z_output = z_mux(0, 0, c_val, opmode);
+
+    printf("MUX X output: 0x%lX, MUX Y output: 0x%lX, MUX Z output: 0x%lX\n", mux_x_output, mux_y_output, mux_z_output);
+
+    int64_t cin = carry_select(carryinsel, carryin, carrycascin, 0, a_val_preadder, b_val, 0, 0);
+
+    printf("Carry-in selected: 0x%lX\n", cin);
+
+    // Second stage: Adder/Subtractor/Logic
+    int64_t p = stage2(mux_x_output, mux_y_output, mux_z_output, cin, alumode, opmode);
+    
+    return p;
+}
+
+int main() {
+    // A basic test code to call the dsp48e1 function
+
+    int32_t a = -10;
+    int32_t b = 10;
+    int64_t c = 4;
+    int32_t d = 0;
+
+    // Test A * B operation
+    int8_t opmode = 0b0000101;
+    int8_t alumode = 0b0000; // 2nd stage addition
+    int8_t inmode = 0b00000; // Use A2, B2, no pre-adder
+    int8_t carryinsel = 0b000; // Use CARRYIN
+    bool carryin = false;
+    bool casrycascin = false;
+
+    int64_t result = dsp48e1(a, a, b, b, c, d, opmode, alumode, inmode, carryinsel, carryin, casrycascin);
+
+    printf("Result: 0x%1X\n", result);
+    printf("Result: %d\n", result);
+
+    // Test A * B + C operation
+    opmode = 0b0110101;
+
+    result = dsp48e1(a, a, b, b, c, d, opmode, alumode, inmode, carryinsel, carryin, casrycascin);
+
+    printf("Result: 0x%1X\n", result);
+    printf("Result: %d\n", result);
+
+    // Test A:B + C operation
+    a = 0;
+    b = 10;
+    opmode = 0b0001111;
+
+    result = dsp48e1(a, a, b, b, c, d, opmode, alumode, inmode, carryinsel, carryin, casrycascin);
+
+    printf("Result: 0x%1X\n", result);
+    printf("Result: %d\n", result);
+
     return 0;
-}*/
+}
