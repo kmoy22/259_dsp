@@ -134,7 +134,7 @@ int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32
     if (b2_val & (1 << (B_WIDTH - 1))) {
         b2_val |= ~b_mask;
     }
-    if (c_val & (1L << (C_WIDTH - 1))) {
+    if (c_val & (0x1ULL << (C_WIDTH - 1))) {
         c_val |= ~c_mask;
     }
     if (d_val & (1 << (D_WIDTH - 1))) {
@@ -146,10 +146,10 @@ int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32
     int32_t b_val = b_select(b1_val, b2_val, inmode);
 
     // Pre adder  
-    int preadder_result = pre_adder(a1_val_preadder, a2_val_preadder, d_val, inmode);
+    int32_t preadder_result = pre_adder(a1_val_preadder, a2_val_preadder, d_val, inmode);
 
     // 25 x 18 Multiplier
-    long multiplier_result = multiplier(preadder_result, b_val);
+    int64_t multiplier_result = multiplier(preadder_result, b_val);
 
     int64_t mux_x_output = x_mux(multiplier_result, 0, a_val, b_val, opmode);
     int64_t mux_y_output = y_mux(multiplier_result, c_val, opmode);
@@ -248,22 +248,26 @@ int64_t x_mux(int64_t m, int64_t p, int32_t a, int32_t b, int8_t opmode) {
 
     int64_t x_output;
 
-    uint64_t mask48 = 0x0000FFFFFFFFFFFFULL; // 48 bits
-    int64_t a_b_concat = ((int64_t)((((((uint64_t)a) << 18) | (uint64_t)b) & mask48) << 16)) >> 16; // Concatenate A and B inputs 
+    uint64_t mask43 = 0x7FFFFFFFFFFULL; // Lower 43 bits
+    int64_t a_b_concat = ((int64_t)((((((uint64_t)a) << 18) | (uint64_t)b) & mask43) << 20)) >> 20; // Concatenate A and B inputs 
 
     switch (x_control) {
         case 0: // 00
             x_output = 0;
+            break;
         case 1: // 01
             if (y_control == 1) { // 01
                 x_output = m;
             } else {
                 x_output = 0; // Illegal case, default to 0
             }
+            break;
         case 2: // 10
             x_output = p;
+            break;
         case 3: // 11
             x_output = a_b_concat;
+            break;
     }
 
     return x_output;
@@ -282,16 +286,20 @@ int64_t y_mux(int64_t m, int64_t c, int8_t opmode) {
     switch (y_control) {
         case 0: // 00
             y_output = 0;
+            break;
         case 1: // 01
             if (x_control == 1) { // 01
                 y_output = m;
             } else {
                 y_output = 0; // Illegal case, default to 0
             }
+            break;
         case 2: // 10 - Illegal case, default to 0
-            y_output = 0xFFFFFFFFFFFF;
+            y_output = 0xFFFFFFFFFFFFULL;
+            break;
         case 3: // 11 - Illegal case, default to 0
             y_output = c;
+            break;
     }
 
     return y_output;
@@ -312,20 +320,28 @@ int64_t z_mux(int64_t pcin, int64_t p, int64_t c, int8_t opmode) {
     switch (z_control) {
         case 0: 
             z_output = 0;
+            break;
         case 1: 
             z_output = pcin;
+            break;
         case 2: // 010
             z_output = p;
+            break;
         case 3: // 011
             z_output = c;
+            break;
         case 4: // 100
             z_output = ((y_control == 2) & (x_control == 0)) ? p : 0;
+            break;
         case 5: // 101
             z_output = pcin << 17;
+            break;
         case 6: // 110
             z_output = p << 17;
+            break;
         case 7: // 111 
             z_output = 0; // Illegal case, default to 0
+            break;
     }
 
     return z_output;
@@ -351,12 +367,16 @@ int64_t stage2(int64_t x, int64_t y, int64_t z, int64_t cin, int8_t alumode, int
             switch (alumode2_control) {
                 case 0: // 00
                     result = x + y + z + cin;
+                    break;
                 case 1: // 01
-                    result = -z - x - y - cin - 1;
+                    result = ~z + x + y + cin;
+                    break;
                 case 2: // 10
-                    result = -z + (x + y + cin) - 1;
+                    result = ~(x + y + z + cin);
+                    break;
                 case 3: // 11
-                    result = z - (x + y + cin);   
+                    result = z - (x + y + cin);  
+                    break; 
             }
         } else {
             result = 0; // Illegal case
@@ -366,43 +386,61 @@ int64_t stage2(int64_t x, int64_t y, int64_t z, int64_t cin, int8_t alumode, int
             switch(alumode4_control) {
                 case 4: // 0100
                     result = x ^ z; // X XOR Z
+                    break;
                 case 5: // 0101
-                    result = !(x ^ z); // X XNOR Z
+                    result = ~(x ^ z); // X XNOR Z
+                    break;
                 case 6: // 0110
-                    result = !(x ^ z); // X XNOR Z
+                    result = ~(x ^ z); // X XNOR Z
+                    break;
                 case 7: // 0111
                     result = x ^ z; // X XOR Z
+                    break;
                 case 12: // 1100
                     result = x & z; // X AND Z
+                    break;
                 case 13: // 1101
-                    result = x & !z; // X AND (NOT Z)
+                    result = x & ~z; // X AND (NOT Z)
+                    break;
                 case 14: // 1110
-                    result = !(x & z); // X NAND Z
+                    result = ~(x & z); // X NAND Z
+                    break;
                 case 15: // 1111
-                    result = !x | z; // (NOT X) OR Z
+                    result = ~x | z; // (NOT X) OR Z
+                    break;
                 default:
                     result = 0; // Illegal case
+                    break;
             }
         } else if (opmode_y_control == 2) { // 10
             switch(alumode4_control) {
                 case 4: // 0100
-                    result = !(x ^ z); // X XNOR Z
+                    result = ~(x ^ z); // X XNOR Z
+                    break;
                 case 5: // 0101
                     result = x ^ z; // X XOR Z
+                    break;
                 case 6: // 0110
                     result = x ^ z; // X XOR Z
+                    break;
                 case 7: // 0111
-                    result = !(x ^ z); // X XNOR Z
+                    result = ~(x ^ z); // X XNOR Z
+                    break;
                 case 12: // 1100
                     result = x | z; // X OR Z
+                    break;
                 case 13: // 1101
-                    result = x | !z; // X OR (NOT Z)
+                    result = x | ~z; // X OR (NOT Z)
+                    break;
                 case 14: // 1110
-                    result = !(x | z); // X NOR Z
+                    result = ~(x | z); // X NOR Z
+                    break;
                 case 15: // 1111
-                    result = !x & z); // (NOT X) AND Z
+                    result = ~x & z; // (NOT X) AND Z
+                    break;
                 default:
                     result = 0; // Illegal case
+                    break;
             }
         }
     }
@@ -422,22 +460,30 @@ int64_t carry_select(int8_t carryinsel, bool carryin, bool carrycascin, bool car
     switch(carryinsel_control){
         case 0: // 000
             carryin_output = (int64_t) carryin;
+            break;
         case 1: // 001
-            carryin_output = (int64_t) (!pcin & (0x1 << 47));
+            carryin_output = (int64_t) (~pcin & (0x1 << 47));
+            break;
         case 2: // 010
             carryin_output = (int64_t) carrycascin;
+            break;
         case 3: // 011
-            carryin_output = (int64_t) !(!pcin & (0x1 << 47));
+            carryin_output = (int64_t) ~(~pcin & (0x1 << 47));
+            break;
         case 4: // 100
             carryin_output = (int64_t) carrycascout;
+            break;
         case 5: // 101
-            carryin_output = (int64_t) (!p & (0x1 << 47));
+            carryin_output = (int64_t) (~p & (0x1 << 47));
+            break;
         case 6: // 110
-            bool a_24 = (a & (0x1 << 24)) != 0;
-            bool b_17 = (b & (0x1 << 17)) != 0;
+            bool a_24 = (a & (0x1ULL << 24)) != 0;
+            bool b_17 = (b & (0x1ULL << 17)) != 0;
             carryin_output = (int64_t) (a_24 ^ b_17);
+            break;
         case 7: // 111
-            carryin_output = (int64_t) !(!p & (0x1 << 47));
+            carryin_output = (int64_t) ~(~p & (0x1 << 47));
+            break;
     }
 
     return carryin_output;
