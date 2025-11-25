@@ -281,7 +281,7 @@ int64_t stage2(int64_t x, int64_t y, int64_t z, int64_t cin, int8_t alumode, int
     int8_t alumode4_control = alumode & alumode4_mask;
     int8_t alumode2_control = alumode & alumode2_mask;
 
-    printf("Stage 2 - x: 0x%lX, y: 0x%lX, z: 0x%lX, cin: 0x%lX, alumode: 0b%04b, opmode_y: 0b%02b\n", x, y, z, cin, alumode4_control, opmode_y_control);
+    //printf("Stage 2 - x: 0x%lX, y: 0x%lX, z: 0x%lX, cin: 0x%lX, alumode: 0b%04b, opmode_y: 0b%02b\n", x, y, z, cin, alumode4_control, opmode_y_control);
 
     int64_t result;
 
@@ -453,6 +453,7 @@ int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32
 
     // Sign extend to fit the C types
     // If the sign bit is set, extend the sign via the inverted mask
+    
     if (a1_val & (1 << (A_WIDTH - 1))) {
         a1_val |= ~a_mask;
     }
@@ -477,42 +478,43 @@ int64_t dsp48e1(int32_t a1, int32_t a2, int32_t b1, int32_t b2, int64_t c, int32
     if (d_val & (1 << (D_WIDTH - 1))) {
         d_val |= ~d_mask;
     }
+    
 
-    printf("A1: 0x%X, A2: 0x%X, B1: 0x%X, B2: 0x%X, C: 0x%lX, D: 0x%X\n", a1_val, a2_val, b1_val, b2_val, c_val, d_val);
+    //printf("A1: 0x%X, A2: 0x%X, B1: 0x%X, B2: 0x%X, C: 0x%lX, D: 0x%X\n", a1_val, a2_val, b1_val, b2_val, c_val, d_val);
 
     int32_t a_val_preadder = a_select(a1_val_preadder, a2_val_preadder, inmode);
     int32_t a_val = a_select(a1_val, a2_val, inmode);
     int32_t b_val = b_select(b1_val, b2_val, inmode);
 
-    printf("A selected: 0x%X, B selected: 0x%X\n", a_val, b_val);
+    //printf("A selected: 0x%X, B selected: 0x%X\n", a_val, b_val);
 
     // Pre adder  
     int32_t preadder_result = pre_adder(a1_val_preadder, a2_val_preadder, d_val, inmode);
 
-    printf("Pre-adder result: 0x%X\n", preadder_result);
+    //printf("Pre-adder result: 0x%X\n", preadder_result);
 
     // 25 x 18 Multiplier
     int64_t multiplier_result_1 = multiplier_x(preadder_result, b_val);
     int64_t multiplier_result_2 = multiplier_y(preadder_result, b_val);
 
-    printf("Multiplier result 1: 0x%lX, Multiplier result 2: 0x%lX\n", multiplier_result_1, multiplier_result_2);
+    //printf("Multiplier result 1: 0x%lX, Multiplier result 2: 0x%lX\n", multiplier_result_1, multiplier_result_2);
 
     int64_t mux_x_output = x_mux(multiplier_result_1, 0, a_val, b_val, opmode);
     int64_t mux_y_output = y_mux(multiplier_result_2, c_val, opmode);
     int64_t mux_z_output = z_mux(0, 0, c_val, opmode);
 
-    printf("MUX X output: 0x%lX, MUX Y output: 0x%lX, MUX Z output: 0x%lX\n", mux_x_output, mux_y_output, mux_z_output);
+    //printf("MUX X output: 0x%lX, MUX Y output: 0x%lX, MUX Z output: 0x%lX\n", mux_x_output, mux_y_output, mux_z_output);
 
     int64_t cin = carry_select(carryinsel, carryin, carrycascin, 0, a_val_preadder, b_val, 0, 0);
 
-    printf("Carry-in selected: 0x%lX\n", cin);
+    //printf("Carry-in selected: 0x%lX\n", cin);
 
     // Second stage: Adder/Subtractor/Logic
     int64_t p = stage2(mux_x_output, mux_y_output, mux_z_output, cin, alumode, opmode);
     
     return p;
 }
-
+/*
 int main() {
     // A basic test code to call the dsp48e1 function
 
@@ -553,4 +555,4 @@ int main() {
     printf("Result: %d\n", result);
 
     return 0;
-}
+}*/
